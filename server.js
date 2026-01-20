@@ -5,48 +5,54 @@ const cors = require('cors');
 
 const app = express();
 
-// 1. CONFIGURAÇÃO DE SEGURANÇA
+// 1. CONFIGURAÇÃO DE SEGURANÇA E LIMITES
 app.use(cors()); 
 app.use(express.json({ limit: '50mb' }));
 
-// 2. CONFIGURAÇÃO DO POOL DE CONEXÕES (SOLUÇÃO PARA TIMEOUT)
+// 2. CONFIGURAÇÃO DO POOL DE CONEXÕES (HÍBRIDO: NUVEM/LOCAL)
 const pool = mysql.createPool({
+    // O Railway preenche essas variáveis automaticamente se você fez o "Reference"
     host: process.env.MYSQLHOST || '127.0.0.1',
     user: process.env.MYSQLUSER || 'root',
-    password: process.env.MYSQLPASSWORD || '',
-    database: process.env.MYSQLDATABASE || 'railway',
+    password: process.env.MYSQLPASSWORD || '', 
+    database: process.env.MYSQLDATABASE || 'railway', 
     port: process.env.MYSQLPORT || 3306,
+    
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
-    enableKeepAlive: true, // Mantém a conexão "quente"
+    enableKeepAlive: true,
     keepAliveInitialDelay: 10000
 });
 
-// Teste de conexão do Pool
+// Verificador de conexão para o Log do Railway
 pool.getConnection((err, conn) => {
-    if (err) console.error("❌ ERRO NO POOL:", err.message);
-    else {
-        console.log("✅ Pool de Conexões pronto e estável!");
+    if (err) {
+        console.error("❌ ERRO NO POOL: Verifique se as variáveis do Railway estão conectadas!");
+        console.error("Detalhe do erro:", err.message);
+    } else {
+        console.log("✅ Conectado ao MySQL da Nuvem com sucesso!");
         conn.release();
     }
 });
 
 // ============================================
-// 3. ROTAS ATUALIZADAS (USANDO POOL)
+// 3. ROTAS (LOGIN E OPERAÇÕES)
 // ============================================
 
-// LOGIN
 app.post('/login', (req, res) => {
     const { user, pass } = req.body;
+    // O pool gerencia a abertura e fechamento da conexão automaticamente
     pool.query("SELECT * FROM usuarios WHERE user = ? AND pass = ?", [user, pass], (err, results) => {
-        if (err) return res.status(500).json({ success: false, msg: "Erro no Banco" });
-        if (results.length > 0) res.json({ success: true, usuario: results[0] });
-        else res.json({ success: false, msg: "Usuário/Senha incorretos" });
+        if (err) return res.status(500).json({ success: false, msg: "Erro interno no banco" });
+        if (results.length > 0) {
+            res.json({ success: true, usuario: results[0] });
+        } else {
+            res.json({ success: false, msg: "Usuário ou senha incorretos" });
+        }
     });
 });
 
-// LISTAR PRODUTOS
 app.get('/produtos', (req, res) => {
     const busca = req.query.busca;
     let sql = "SELECT * FROM produtos";
@@ -63,7 +69,6 @@ app.get('/produtos', (req, res) => {
     });
 });
 
-// IMPORTAR PRODUTOS (XML)
 app.post('/produtos/importar', (req, res) => {
     const itens = req.body;
     if (!itens || itens.length === 0) return res.json({ success: false });
@@ -76,7 +81,6 @@ app.post('/produtos/importar', (req, res) => {
     });
 });
 
-// HISTÓRICO DE COTAÇÕES
 app.get('/cotacoes', (req, res) => {
     pool.query("SELECT * FROM cotacoes ORDER BY id DESC LIMIT 100", (err, results) => {
         if (err) return res.json([]);
@@ -88,7 +92,6 @@ app.get('/cotacoes', (req, res) => {
     });
 });
 
-// SALVAR COTAÇÃO
 app.post('/cotacoes', (req, res) => {
     const { cliente, vendedor, data, status, feedback, resultadoIA } = req.body;
     const jsonIA = JSON.stringify(resultadoIA);
@@ -100,7 +103,6 @@ app.post('/cotacoes', (req, res) => {
     });
 });
 
-// GESTÃO DE USUÁRIOS
 app.get('/usuarios', (req, res) => {
     pool.query("SELECT id, nome, user, perfil FROM usuarios", (err, r) => res.json(err ? [] : r));
 });
@@ -113,12 +115,10 @@ app.post('/usuarios', (req, res) => {
     });
 });
 
-// EXCLUIR USUÁRIO
 app.delete('/usuarios/:id', (req, res) => {
     pool.query("DELETE FROM usuarios WHERE id = ?", [req.params.id], (err) => res.json({ success: !err }));
 });
 
-// DASHBOARD (ANÁLISE)
 app.get('/analise/dados', (req, res) => {
     const sqlMais = "SELECT nome, qtd_estoque as qtd FROM produtos ORDER BY qtd_estoque DESC LIMIT 5";
     const sqlMenos = "SELECT nome, preco_custo as preco FROM produtos ORDER BY qtd_estoque ASC LIMIT 5";
@@ -133,7 +133,7 @@ app.get('/analise/dados', (req, res) => {
     });
 });
 
-// 4. INICIALIZAÇÃO
+// 4. INICIALIZAÇÃO DO SERVIDOR
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Servidor rodando na porta ${PORT}`);
