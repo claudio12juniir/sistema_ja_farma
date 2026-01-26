@@ -1,5 +1,5 @@
 // NO INÍCIO DO APP.JS
-const API_URL = "http://127.0.0.1:3000";
+const API_URL = "https://sistema-ja-farma.onrender.com";
 // VARIÁVEIS GLOBAIS
 let listaClientes = [];
 let dadosCotacaoAtual = [];
@@ -35,11 +35,12 @@ document.addEventListener("DOMContentLoaded", () => {
 // ======================================================
 
 async function realizarLogin() {
+
     const user = document.getElementById("login-user").value.trim().toLowerCase();
     const pass = document.getElementById("login-pass").value.trim();
     const msgErro = document.getElementById("msg-erro");
     const btn = document.getElementById("btn-login");
-
+console.log(1);
     // Limpa mensagens anteriores
     if(msgErro) {
         msgErro.style.display = "none";
@@ -55,82 +56,94 @@ async function realizarLogin() {
         }
         return;
     }
-
+console.log(2);
     try {
         btn.innerText = "Conectando...";
         btn.disabled = true;
 
+        console.log("Tentando conectar em:", `${API_URL}/login`);
+console.log(3);
         const res = await fetch(`${API_URL}/login`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ user, pass })
         });
+console.log(4);
+console.log(res);
+        // --- AQUI ESTÁ A CORREÇÃO DO ERRO JSON ---
+        const textoResposta = await res.text(); // Lê a resposta crua primeiro
+        let data;
         
-        const data = await res.json();
+        try { console.log(5);
+            console.log(textoResposta);
+            data =textoResposta; // Tenta converter para JSON
+            console.log(data);
+        } catch (e) {
+            // Se falhar, é porque o servidor devolveu erro HTML ou vazio
+            console.error("RESPOSTA NÃO É JSON:", textoResposta);
+            throw new Error(`O servidor respondeu com erro: ${res.status} - Verifique o console.`);
+        }
+        // -----------------------------------------
+
+        /* data = {
+            status: res.status,
+            usuario: { nome: "Administrador", perfil: "ADMIN" }
+        }
+            */
         
-        if (data.success) {
-            console.log("✅ Login Sucesso! Iniciando transição de tela...");
+        if (res.status === 200) {
+            console.log(6);
+            console.log("✅ Login Sucesso! Iniciando transição...");
             usuarioLogado = data.usuario;
             document.body.classList.remove("not-logged");
             
-            // --- BLOCO DE SEGURANÇA VISUAL (EVITA O TRAVAMENTO) ---
-            
-            // 1. Tenta atualizar o nome do usuário
+            // Atualizações Visuais
             const elUser = document.getElementById('display-username');
             if (elUser) elUser.innerText = usuarioLogado.nome;
 
-            // 2. Tenta atualizar as iniciais (Banner Novo)
             const elInitials = document.getElementById('user-initials');
             if (elInitials && usuarioLogado.nome) {
                 const iniciais = usuarioLogado.nome.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
                 elInitials.innerText = iniciais;
             }
 
-            // 3. Tenta atualizar a saudação
             const elGreeting = document.getElementById('greeting-time');
             if (elGreeting) {
                 const hora = new Date().getHours();
-                let saudacao = "Olá, boa noite";
-                if (hora >= 5 && hora < 12) saudacao = "Olá, bom dia";
-                else if (hora >= 12 && hora < 18) saudacao = "Olá, boa tarde";
-                elGreeting.innerText = saudacao;
+                elGreeting.innerText = (hora >= 5 && hora < 12) ? "Olá, bom dia" : (hora >= 12 && hora < 18) ? "Olá, boa tarde" : "Olá, boa noite";
             }
 
-            // 4. Controle de Botões Admin
             document.querySelectorAll('.admin-only').forEach(btn => {
                 if(btn) btn.style.display = (usuarioLogado.perfil === 'ADMIN') ? 'block' : 'none';
             });
             
-            // 5. Preenche campo oculto se existir
             const elVendedor = document.getElementById("cotacaoVendedor");
             if(elVendedor) elVendedor.value = usuarioLogado.nome;
-            
-            // --- FIM DO BLOCO DE SEGURANÇA ---
 
-            // Carrega dados e FORCE a troca de aba
             await carregarDadosIniciais();
             showTab('intro'); 
 
-        } else { 
-            // Senha incorreta vinda do servidor
+        } else { console.log(7);
+            // Senha incorreta (mas o servidor respondeu corretamente)
             if(msgErro) {
-                msgErro.innerText = "❌ Usuário ou senha incorretos.";
+                msgErro.innerText = "❌ " + (data.msg || "Usuário ou senha incorretos.");
                 msgErro.style.display = "block";
             } else {
-                alert("Usuário ou senha incorretos.");
+                alert(data.msg || "Usuário ou senha incorretos.");
             }
         }
     } catch (error) { 
-        console.error("ERRO REAL:", error); // Isso vai mostrar o erro verdadeiro no console
+        console.error("ERRO TÉCNICO:", error);
         
-        // Se o erro foi visual, ainda tentamos liberar o acesso se tivermos o usuário
         if (usuarioLogado) {
             showTab('intro');
         } else {
             if(msgErro) {
-                msgErro.innerText = "⚠️ Erro técnico no Javascript. Veja o Console (Ctrl+Shift+I).";
+                // Mostra um erro mais amigável na tela
+                msgErro.innerText = "⚠️ Erro de conexão com o Servidor. Tente novamente em 1 minuto.";
                 msgErro.style.display = "block";
             } else {
-                alert("Erro de conexão ou código.");
+                alert("Erro ao conectar no servidor. Verifique o console.");
             }
         }
     } finally {
