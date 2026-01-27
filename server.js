@@ -30,6 +30,7 @@ pool.getConnection((err, conn) => {
 
 // Rota de Login
 app.post('/login', (req, res) => { 
+    console.log("Recebendo tentativa de login...");
     const { user, pass } = req.body;
     pool.query("SELECT * FROM usuarios WHERE user = ? AND pass = ?", [user, pass], (err, results) => {
         if (err) return res.status(500).json({ success: false, msg: err.message });
